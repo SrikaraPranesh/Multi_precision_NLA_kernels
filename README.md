@@ -18,9 +18,9 @@ SIAM Journal on Scientific Computing  41(5) (2019): C585–C602.
 * AdvanPix toolbox
 
 ## Contributor 
-Erin Carson
-Nicholas J. Higham
-Srikara Pranesh
+* Erin Carson
+* Nicholas J. Higham
+* Srikara Pranesh
 
 
   
