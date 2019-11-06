@@ -17,6 +17,10 @@ SIAM Journal on Scientific Computing  41(5) (2019): C585–C602.
 * [Muti_precision_NLA_kernels](https://github.com/SrikaraPranesh/Muti_precision_NLA_kernels)
 * AdvanPix toolbox
 
+## Contributor 
+Erin Carson
+Nicholas J. Higham
+Srikara Pranesh
 
 
   
