@@ -2,7 +2,7 @@
 
 
 ## Related publications
-* Carson, Erin, and Nicholas J. Higham. [Accelerating the solution of linear systems b
+* Erin Carson, and Nicholas J. Higham. [Accelerating the solution of linear systems b
 1y iterative refinement in three precisions.](https://epubs.siam.org/doi/pdf/10.1137/17M1140819)
 SIAM Journal on Scientific Computing 40.2 (2018): A817-A847.
 * Nicholas J. Higham, Srikara Pranesh. [Simulating Low Precision Floating-Point Arithmetic.](https://epubs.siam.org/doi/10.1137/19M1251308) 
