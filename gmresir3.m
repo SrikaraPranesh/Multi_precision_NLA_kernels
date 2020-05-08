@@ -2,7 +2,7 @@ function [x,iter_o,gmres_its_o] = gmresir3(A,b,precf,precw,precr,iter_max,...
                                        gtol,scale,figs)
 %GMRESIR3  GMRES-based iterative refinement in three precisions.
 %     x = gmresir3(A,b,precf,precw,precr,iter_max,gtol,scale) solves
-%     Ax = b using gmres-based iterative refinement with at most
+%     Ax = b using gmres-based iterative (GMRES-IR) with at most
 %     iter_max ref. steps and GMRES convergence tolerance gtol, with
 %     LU factors computed in low precision precf:
 %       * fp16 if precf = 1,
@@ -16,11 +16,10 @@ function [x,iter_o,gmres_its_o] = gmresir3(A,b,precf,precw,precr,iter_max,...
 %       * quad if precr = 4
 %       
 %     figs = 1 will plot the forward, backward errors 
-%            and bounds from the analysis of [1].
+%            and bounds from the analysis of GMRES-IR.
 %     
 %     scale -- A structure which contains various options for
 %              squeezing a matrix into low precision range. 
-%              Implementation based on [2].
 %               *scale.flag = 1 to call 2 sided diagonal scaling
 %                                                      
 %               *scale.cluf = 1 custom lu factorization
@@ -35,6 +34,7 @@ function [x,iter_o,gmres_its_o] = gmresir3(A,b,precf,precw,precr,iter_max,...
 %               *scale.cri = 1 uses normwise, componentwise backward error
 %               and forward error as a stopping criterion. = 2 just
 %               normwise backward error <= nu. Default value is 2.
+%
 %   Note: Requires chop.m and Advanpix multiprecision toolbox
 %
 %
@@ -91,73 +91,90 @@ else
     mp.Digits(34);
 end
 
-xact = double(mp(double(A),34)\mp(double(b),34));
+if (scale.cri == 1 || figs == 1)
+    xact = double(mp(double(A),34)\mp(double(b),34));
+end
 
 %Compute low precision factorization
 [uh,xmins,xmin,xmax] = float_params(ufs);
-if (ufs1 == 'h' && scale.flag == 1)
-    if scale.type == 'g'
-        [Ah,R,C] = scale_diag_2side(A);
-    elseif scale.type == 's'
-        [Ah,R,C] = scale_diag_2side_symm(A);
-    elseif scale.type == 'p'
-        [Ah,R] = spd_diag_scale(A);
-        C = R;
-        c = scale.pert;
-        Ah = Ah+(c*uh*eye(n));
-    else
-        error('unknown matrix type');
+if scale.cluf == 0
+    if (ufs1 == 'h' && scale.flag == 1)
+        if scale.type == 'g'
+            [Ah,R,C] = scale_diag_2side(A);
+        elseif scale.type == 's'
+            [Ah,R,C] = scale_diag_2side_symm(A);
+        elseif scale.type == 'p'
+            [Ah,R] = spd_diag_scale(A);
+            C = R;
+            c = scale.pert;
+            Ah = Ah+(c*uh*eye(n));
+        else
+            error('unknown matrix type');
+        end
+        mu = (scale.theta)*xmax;
+        Ah = mu*Ah;
+        if scale.type == 'p'
+            U = chol_lp(Ah);
+            L = U'; P = eye(n);
+        else
+            Ah = chop(Ah);
+            [L,U,p] = lutx_chop(Ah);
+            I = chop(eye(n)); P = I(p,:);
+        end
+        LL = (double(P')*double(L));
+        LL = (1/mu)*diag(1./diag(R))*double(LL);
+        U = double(U)*diag(1./diag(C));
+        x = U\(LL\b);
+    elseif ufs1 == 's'
+        if scale.type == 'p'
+            c = scale.pert;
+            Ah = A+(c*uh*diag(diag(A)));
+            U = chol(single(Ah));
+            L = U'; P = eye(n);
+        else
+            [L,U,P] = lu(single(A));
+        end
+        LL = (double(P')*double(L));
+        x =  U\(L\(P*b));
+    elseif (ufs1 == 'b' || (ufs1 == 'h' && scale.flag == 0))
+        if scale.type == 'p'
+            c = scale.pert;
+            A1 = A+(c*uh*diag(diag(A)));
+            U = chol_lp(A1,ufs1);
+            L = U'; P = eye(n);
+        else
+            Ah = chop(A);
+            [L,U,p] = lutx_chop(Ah);
+            I = chop(eye(n)); P = I(p,:);
+        end
+        LL = P'*L;
+        x =  U\(L\(P*b));
     end
-    mu = (scale.theta)*xmax;
-    Ah = mu*Ah;
-    if scale.type == 'p'
-        U = chol_lp(Ah);
-        L = U'; P = eye(n);
-    else
-        Ah = chop(Ah);
-        [L,U,p] = lutx_chop(Ah);
-        I = chop(eye(n)); P = I(p,:);
-    end
-    LL = (double(P')*double(L));
-    LL = (1/mu)*diag(1./diag(R))*double(LL);
-    U = double(U)*diag(1./diag(C));
-    x = U\(LL\b);
-elseif ufs1 == 's'
-    c = scale.pert;
-    Ah = A+(c*uh*diag(diag(A)));
-    U = chol(single(Ah));
-    L = U'; P = eye(n);
-    LL = (double(P')*double(L));
-    x =  U\(L\(P*b));
-elseif ufs1 == 'b'
-    if scale.type == 'p'
-        c = scale.pert;
-        A1 = A+(c*uh*diag(diag(A)));
-        U = chol_lp(A1,ufs1);
-        L = U'; P = eye(n);
-    else
-        Ah = chop(A);
-        [L,U,p] = lutx_chop(Ah);
-        I = chop(eye(n)); P = I(p,:);
-    end
-    LL = P'*L;
-    x =  U\(L\(P*b));
 elseif scale.cluf == 1
     L = scale.L;
     U = scale.U;
     P = scale.P;
     LL = P'*L;
-    x =  U\(L\(P*b));
+    if precf == 3
+        x =  U\(L\(P*single(b)));
+    else
+        t1 = lp_matvec(P,chop(b));
+        t1 = trisol(L,t1);
+        x = trisol(U,t1);
+    end
+    % x =  U\(L\(P*b));
 end
 
 
 %Compute condition number of A, of preconditioned system At, cond(A), and
 %cond(A,x) for the exact solution
-At = double(mp(double(U),34)\(mp(double(LL),34)\(mp(double(A),34))));
-kinfA = double(cond(mp(double(A),34),'inf'));
-kinfAt = double(cond(mp(double(At),34),'inf'));
-condAx = norm(abs(inv(mp(double(A),34)))*abs(mp(double(A),34))*abs(xact),inf)/norm(xact,inf);
-condA = norm(abs(inv(mp(double(A),34)))*abs(mp(double(A),34)),'inf');
+if figs == 1
+    At = double(mp(double(U),34)\(mp(double(LL),34)\(mp(double(A),34))));
+    kinfA = double(cond(mp(double(A),34),'inf'));
+    kinfAt = double(cond(mp(double(At),34),'inf'));
+    condAx = norm(abs(inv(mp(double(A),34)))*abs(mp(double(A),34))*abs(xact),inf)/norm(xact,inf);
+    condA = norm(abs(inv(mp(double(A),34)))*abs(mp(double(A),34)),'inf');
+end
 
 %Note: when kinf(A) is large, the initial solution x can have 'Inf's in it
 %If so, default to using 0 as initial solution
@@ -185,13 +202,18 @@ gmres_its = 0;
 while ~cged
     
     %Compute size of errors, quantities in bounds
-    ferr(iter+1) = double(norm(mp(double(x),34)-mp(xact,34),'inf')/norm(mp(xact,34),'inf'));
-    mu(iter+1) = norm(double(A)*(mp(double(x),34)-mp(xact,34)),'inf')/(norm(mp(double(A),34),'inf')*norm(mp(double(x),34)-mp(xact,34),'inf'));
+
     res = double(b) - double(A)*double(x);
     nbe(iter+1) = double(norm(mp(res,34),'inf')/(norm(mp(double(A),34),'inf')*norm(mp(double(x),34),'inf')+ norm(mp(double(b),34),'inf')));
-    temp = double( abs(mp(res,34)) ./ (abs(mp(double(A),34))*abs(mp(double(x),34)) + abs(mp(double(b),34))) );
-    temp(isnan(temp)) = 0; % Set 0/0 to 0.
-    cbe(iter+1) = max(temp);
+
+    if (scale.cri == 1 || figs == 1)
+        ferr(iter+1) = double(norm(mp(double(x),34)-mp(xact,34),'inf')/norm(mp(xact,34),'inf'));
+        mu(iter+1) = norm(double(A)*(mp(double(x),34)-mp(xact,34)),'inf')/(norm(mp(double(A),34),'inf')*norm(mp(double(x),34)-mp(xact,34),'inf'));
+        temp = double( abs(mp(res,34)) ./ (abs(mp(double(A),34))*abs(mp(double(x),34)) + abs(mp(double(b),34))) );
+        temp(isnan(temp)) = 0; % Set 0/0 to 0.
+        cbe(iter+1) = max(temp);
+    end
+    
     
     iter = iter + 1;
     if iter > iter_max 
@@ -199,10 +221,10 @@ while ~cged
         break; 
     end
     
-    if isnan(kinfAt)
-        gmres_its_o = -1e4; iter_o = -1e4;
-        break;
-    end
+%     if isnan(kinfAt)
+%         gmres_its_o = -1e4; iter_o = -1e4;
+%         break;
+%     end
     
     %Check convergence
     if scale.cri == 1
@@ -246,12 +268,15 @@ while ~cged
     end
 
     gmres_its = gmres_its+its;
-    %Compute quantities in bounds for plotting
-    lim(iter) = double( 2*u*cond(mp(double(A),34),'inf')*mu(iter));
-    lim2(iter) = double(2*u*condA);
-    dact = mp(double(A),34)\mp(double(rd1),34);
-    etai(iter) = norm(double(mp(double(d),34)-dact),'inf')/norm(dact,'inf');
-    phi(iter) = min(lim(iter),lim2(iter))+etai(iter);
+    
+    if figs == 1
+        %Compute quantities in bounds for plotting
+        lim(iter) = double( 2*u*cond(mp(double(A),34),'inf')*mu(iter));
+        lim2(iter) = double(2*u*condA);
+        dact = mp(double(A),34)\mp(double(rd1),34);
+        etai(iter) = norm(double(mp(double(d),34)-dact),'inf')/norm(dact,'inf');
+        phi(iter) = min(lim(iter),lim2(iter))+etai(iter);
+    end
     
     %Record number of iterations gmres took
     gmresits = [gmresits,its];
