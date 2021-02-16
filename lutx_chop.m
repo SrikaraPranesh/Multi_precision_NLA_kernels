@@ -5,32 +5,29 @@ function [L,U,p] = lutx_chop(A,format)
 %   It requires the CHOP function to simulate lower precision arithmetic.
 %   By default half precision is used
 
-%   Copyright 2014 Cleve Moler
-%   Copyright 2014 The MathWorks, Inc.
-
 if nargin<2, format = 'h'; end
 fp.format = format; chop([],fp);
 
-[n,n] = size(A);
-p = (1:n)';
+[m,n] = size(A);
+p = (1:m)';
 
 for k = 1:n-1
 
    % Find index of largest element below diagonal in k-th column
-   [r,m] = max(abs(A(k:n,k)));
-   m = m+k-1;
+   [~,ind] = max(abs(A(k:n,k)));
+   ind = ind+k-1;
 
    % Skip elimination if column is zero
-   if (A(m,k) ~= 0)
+   if (A(ind,k) ~= 0)
    
       % Swap pivot row
-      if (m ~= k)
-         A([k m],:) = A([m k],:);
-         p([k m]) = p([m k]);
+      if (ind ~= k)
+         A([k ind],:) = A([ind k],:);
+         p([k ind]) = p([ind k]);
       end
 
       % Compute multipliers
-      i = k+1:n;
+      i = k+1:m;
       A(i,k) = chop(A(i,k)/A(k,k));
 
       % Update the remainder of the matrix
@@ -40,5 +37,5 @@ for k = 1:n-1
 end
 
 % Separate result
-L = tril(A,-1) + eye(n,n);
-U = triu(A);
+L = tril(A,-1) + eye(m,n);
+U = triu(A);U = U(1:n,1:end);
